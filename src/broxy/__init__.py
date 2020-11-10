@@ -2,6 +2,7 @@ import threading
 import time
 import inspect
 import ctypes
+from flask import Flask
 
 __VERSION__ = "0.0.1"
 
@@ -31,6 +32,20 @@ class Broxy():
         self._fetcher = None
         self._sever = None
         self._thread = None
+        self._app = self.getApp()
+
+    def getApp(self):
+        app = Flask("Broxy")
+
+        @app.route('/')
+        def index():
+            return "Broxy"
+
+        @app.route('/pool')
+        def pool():
+            return { i:self._pool[i] for i in range(len(self._pool)) }
+
+        return app
 
     def source(self, override=False):
         def decorator(f):
@@ -60,12 +75,14 @@ class Broxy():
     def start(self):
         self._thread = threading.Thread(target=self.run)
         self._thread.start()
+        self._app.run()
 
     def stop(self):
         if not self._thread:
             return
         stop_thread(self._thread)
         self._thread = None
+        self._app.stop()
         print("Thread stopped")
 
     def __del__(self):
