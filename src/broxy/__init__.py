@@ -1,51 +1,90 @@
 import threading
 import time
-import inspect
-import ctypes
 from flask import Flask
 
 __VERSION__ = "0.0.1"
 
-def _async_raise(tid, exctype):
-    """raises the exception, performs cleanup if needed"""
-    tid = ctypes.c_long(tid)
-    if not inspect.isclass(exctype):
-        exctype = type(exctype)
-    res = ctypes.pythonapi.PyThreadState_SetAsyncExc(tid, ctypes.py_object(exctype))
-    if res == 0:
-        raise ValueError("invalid thread id")
-    elif res != 1:
-        # """if it returns a number greater than one, you're in trouble,
-        # and you should call it again with exc=NULL to revert the effect"""
-        ctypes.pythonapi.PyThreadState_SetAsyncExc(tid, None)
-        raise SystemError("PyThreadState_SetAsyncExc failed")
- 
- 
-def stop_thread(thread):
-    _async_raise(thread.ident, SystemExit)
 
-class Broxy():
-    def __init__(self):
-        self._pool = []
-        self._sources = {}
-        self._statistic = {}
-        self._fetcher = None
-        self._sever = None
-        self._thread = None
-        self._app = self.getApp()
+class Server:
+    def __init__(self, pool, debug=False):
+        self._app = Flask("BorxyServer")
+        self._pool = pool
 
-    def getApp(self):
-        app = Flask("Broxy")
-
-        @app.route('/')
+    def init_app(self, app):
+        @app.route("/")
         def index():
-            return "Broxy"
+            return {"usable": 0, "proxies": []}
 
-        @app.route('/pool')
-        def pool():
-            return { i:self._pool[i] for i in range(len(self._pool)) }
 
-        return app
+class Pool:
+    def __init__(self, debug=False):
+        self._proxies = {}
+        self._sources = {}
+        self._enabled = []
+        self._fetcher = None
+        self._getter = None
+        self._tester = None
+        self.debug = debug
+
+    def register(self, name, fn):
+        # TODO check fn before register
+        self._sources[name] = fn
+        if self.debug:
+            print("Register source : ", name)
+
+    def enable(self, name):
+        if name not in self._sources.keys():
+            pass
+        elif name in self._enabled:
+            pass
+        else:
+            self._enabled.append(name)
+            self.setFetcher(self._enabled)
+
+    def disable(self, name):
+        if name in self._enabled:
+            pass
+        elif name not in self._sources.key():
+            pass
+        else:
+            self._enabled.pop(self._enabled.index(name))
+            self.setFetcher(self._enabled)
+
+    def genFetcher(self):
+        span = 621
+        while True:
+            start = time.time()
+            for name in self._enabled:
+                proxies = self._sources[name].fn()
+                for proxy in proxies:
+                    # TODO check proxy before yield
+                    if self.debug:
+                        print(proxy)
+                    yield proxy
+            rest = time.time() - start - span
+            if rest > 0:
+                span += 621
+                time.sleep(rest)
+            else:
+                span -= 207
+
+    def _ping(self):
+        pass
+
+    def tojson(self):
+        pass
+
+    def fetch(self):
+        pass
+
+    def get(self):
+        pass
+
+
+class Broxy:
+    def __init__(self, debug=False):
+        self._pool = Pool(debug)
+        self._sever = Server(self._pool, debug)
 
     def source(self, override=False):
         def decorator(f):
@@ -55,19 +94,22 @@ class Broxy():
             else:
                 print("Source {} is already exist!".format(f.__name__))
             return f
+
         return decorator
 
     def fetch(self):
         for source in self._sources.values():
             for proxy in source():
                 yield proxy
-            
-    def get(self,num=1):
+
+    def get(self, num=1):
         l = len(self._pool)
-        return self._pool[:num if num < l else -1]
+        return self._pool[: num if num < l else -1]
 
     def status(self):
-        return "Pool   => total: {0}, usable: {1}\nSources=> total: {2}".format(len(self._pool), 0, len(self._sources))
+        return "Pool   => total: {0}, usable: {1}\nSources=> total: {2}".format(
+            len(self._pool), 0, len(self._sources)
+        )
 
     def verify(self, p):
         return False
@@ -91,9 +133,10 @@ class Broxy():
     def run(self):
         if len(self._sources) == 0:
             return
-        while(len(self._pool) < 10):
+        while len(self._pool) < 10:
             self._pool.append(next(self._fetcher))
-            time.sleep(1);
+            time.sleep(1)
+
 
 def main():
     print("Broxy!")
@@ -102,16 +145,13 @@ def main():
     @broxy.source()
     def test():
         for i in range(1234, 65536):
-            yield {
-                "ip": "1.2.3.4",
-                "port": i,
-                "protocol": "http"
-            }
+            yield {"ip": "1.2.3.4", "port": i, "protocol": "http"}
 
     broxy.start()
     time.sleep(2)
     print(broxy.get(3))
     broxy.stop()
+
 
 if __name__ == "__main__":
     main()
