@@ -64,6 +64,21 @@ class Pool:
         self.name=name
         self._proxies = []
 
+    def __str__(self):
+        return ";".join([ str(p) for p in self._proxies ])
+
+    def __getitem__(self, index):
+        l = len(self._proxies)
+        if -l < index < l:
+            return self._proxies[index]
+
+    def __len__(self):
+        return len(self._proxies)
+
+    @property
+    def proxies(self):
+        return self._proxies
+
     def append(self, ip, port, protocol="http"):
         proxy = Proxy(ip, port, protocol)
         if str(proxy) not in [str(i) for i in self._proxies]:
@@ -77,9 +92,6 @@ class Pool:
     def status(self):
         unusable = [p for p in self._proxies if p.delay==-1]
         return "{} => Total: {} | Usable: {} | Unusable: {}".format(self.name, len(self._proxies), len(self._proxies) - len(unusable), len(unusable))
-
-    def __str__(self):
-        return ";".join([ str(p) for p in self._proxies ])
 
     def jsonify(self, n=None):
         l = len(self._proxies)
@@ -176,10 +188,13 @@ def test():
     # pool.sort()
     # pool.clear()
     # print(pool)
-    #
-    server = Server(pool)
+    
+    print(pool.proxies)
+    print(len(pool))
+    
+    # server = Server(pool)
 
-    server.start()
+    # server.start()
 
 if __name__ == "__main__":
     # main()
