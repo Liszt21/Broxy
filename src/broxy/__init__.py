@@ -47,11 +47,16 @@ class Server:
     def __init__(self, pool):
         self._app = Flask("BorxyServer")
         self._pool = pool
+        self._init_app(self._app)
 
-    def init_app(self, app):
+    def _init_app(self, app):
         @app.route("/")
         def index():
-            return {"usable": 0, "proxies": []}
+            proxies = self._pool.jsonify()
+            return { "proxies" :proxies, "count": len(proxies) }
+
+    def start(self):
+        self._app.run()
 
 
 class Pool:
@@ -79,7 +84,7 @@ class Pool:
     def jsonify(self, n=None):
         l = len(self._proxies)
         if not n or n > l: n = l
-        return [ {"ip":p.ip, "port":p.port, "protocol":p.protocol} for p in self._proxies[:n] ]
+        return [ {"ip":p.ip, "port":p.port, "protocol":p.protocol, "delay": p.delay, "last_ping": p.last_ping } for p in self._proxies[:n] ]
 
     def clear(self):
         self._proxies = [ p for p in self._proxies if p.delay != float('inf') ]
@@ -166,11 +171,15 @@ def test():
     pool = Pool()
     pool.append("192.168.48.1", 1081)
     pool.append("192.168.48.1", 1080)
-    print(pool.status())
-    print(pool)
-    pool.sort()
-    pool.clear()
-    print(pool)
+    # print(pool.status())
+    # print(pool)
+    # pool.sort()
+    # pool.clear()
+    # print(pool)
+    #
+    server = Server(pool)
+
+    server.start()
 
 if __name__ == "__main__":
     # main()
