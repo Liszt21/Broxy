@@ -11,7 +11,7 @@ class Proxy():
         self.ip = ip
         self.port = port
         self.protocol = protocol
-        self.delay = -1
+        self.delay = float('inf')
         self.last_ping = None
         self.ping()
 
@@ -28,9 +28,9 @@ class Proxy():
                     'Connection': 'keep-alive'}
             p = requests.get('http://icanhazip.com', headers=head, proxies=proxy)
             delay = time.time() - start
-        except Exception as err:
-            logging.debug(err)
-            delay = -1
+        except Exception as error:
+            logging.debug(error)
+            delay = float('inf')
 
         self.last_ping = time.time()
         self.delay = delay
@@ -55,62 +55,34 @@ class Server:
 
 
 class Pool:
-    def __init__(self):
-        self._proxies = {}
-        self._enabled = []
-        self._fetcher = None
-        self._getter = None
-        self._tester = None
+    def __init__(self, name="Proxy Pool"):
+        self.name=name
+        self._proxies = []
 
-    def register(self, name, fn):
-        # TODO check fn before register
-        self._sources[name] = fn
-        logging.debug("Register source : ", name)
-
-    def enable(self, name):
-        if name not in self._sources.keys():
-            pass
-        elif name in self._enabled:
-            pass
+    def append(self, ip, port, protocol="http"):
+        proxy = Proxy(ip, port, protocol)
+        if str(proxy) not in [str(i) for i in self._proxies]:
+            self._proxies.append(proxy)
         else:
-            self._enabled.append(name)
-            self.setFetcher(self._enabled)
+            logging.info("Proxy : ", proxy, " already exists")
 
-    def disable(self, name):
-        if name in self._enabled:
-            pass
-        elif name not in self._sources.key():
-            pass
-        else:
-            self._enabled.pop(self._enabled.index(name))
-            self.setFetcher(self._enabled)
+    def sort(self):
+        self._proxies.sort(key=lambda a: a.delay)
 
-    def genFetcher(self):
-        span = 621
-        while True:
-            start = time.time()
-            for name in self._enabled:
-                proxies = self._sources[name].fn()
-                for proxy in proxies:
-                    # TODO check proxy before yield
-                    logging.debug(proxy)
-                    yield proxy
-            rest = time.time() - start - span
-            if rest > 0:
-                span += 621
-                time.sleep(rest)
-            else:
-                span -= 207
+    def status(self):
+        unusable = [p for p in self._proxies if p.delay==-1]
+        return "{} => Total: {} | Usable: {} | Unusable: {}".format(self.name, len(self._proxies), len(self._proxies) - len(unusable), len(unusable))
 
-    def tojson(self):
-        pass
+    def __str__(self):
+        return ";".join([ str(p) for p in self._proxies ])
 
-    def fetch(self):
-        pass
+    def jsonify(self, n=None):
+        l = len(self._proxies)
+        if not n or n > l: n = l
+        return [ {"ip":p.ip, "port":p.port, "protocol":p.protocol} for p in self._proxies[:n] ]
 
-    def get(self):
-        pass
-
+    def clear(self):
+        self._proxies = [ p for p in self._proxies if p.delay != float('inf') ]
 
 class Broxy:
     def __init__(self):
@@ -190,7 +162,15 @@ def test():
     logging.basicConfig(level=logging.DEBUG)
     # proxy = Proxy("localhost", 1081)
     proxy = Proxy("192.168.48.1", 1081)
-    print(proxy.status())
+    # print(proxy.status())
+    pool = Pool()
+    pool.append("192.168.48.1", 1081)
+    pool.append("192.168.48.1", 1080)
+    print(pool.status())
+    print(pool)
+    pool.sort()
+    pool.clear()
+    print(pool)
 
 if __name__ == "__main__":
     # main()
