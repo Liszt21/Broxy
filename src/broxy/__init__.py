@@ -28,8 +28,8 @@ class Proxy():
                     'Connection': 'keep-alive'}
             p = requests.get('http://icanhazip.com', headers=head, proxies=proxy)
             delay = time.time() - start
-        except Exception as error:
-            logging.debug(error)
+        except Exception:
+            logging.debug("Unusable proxy: {}".format(str(self)))
             delay = float('inf')
 
         self.last_ping = time.time()
@@ -48,6 +48,7 @@ class Server:
         self._app = Flask("BorxyServer")
         self._pool = pool
         self._init_app(self._app)
+        self._thread = threading.Thread(target=self._app.run)
 
     def _init_app(self, app):
         @app.route("/")
@@ -56,7 +57,7 @@ class Server:
             return { "proxies" :proxies, "count": len(proxies) }
 
     def start(self):
-        self._app.run()
+        self._thread.start()
 
 
 class Pool:
@@ -67,10 +68,8 @@ class Pool:
     def __str__(self):
         return ";".join([ str(p) for p in self._proxies ])
 
-    def __getitem__(self, index):
-        l = len(self._proxies)
-        if -l < index < l:
-            return self._proxies[index]
+    def __getitem__(self, key):
+        return self._proxies[key]
 
     def __len__(self):
         return len(self._proxies)
@@ -80,11 +79,13 @@ class Pool:
         return self._proxies
 
     def append(self, ip, port, protocol="http"):
+        if not protocol:
+            protocol = "http"
         proxy = Proxy(ip, port, protocol)
         if str(proxy) not in [str(i) for i in self._proxies]:
             self._proxies.append(proxy)
         else:
-            logging.info("Proxy : ", proxy, " already exists")
+            logging.info("Proxy : " + str(proxy) + " already exists")
 
     def sort(self):
         self._proxies.sort(key=lambda a: a.delay)
@@ -99,54 +100,59 @@ class Pool:
         return [ {"ip":p.ip, "port":p.port, "protocol":p.protocol, "delay": p.delay, "last_ping": p.last_ping } for p in self._proxies[:n] ]
 
     def clear(self):
+        pre = len(self)
         self._proxies = [ p for p in self._proxies if p.delay != float('inf') ]
+        logging.info("Drop {} unsuable proxies".format(pre - len(self)))
 
-class Broxy:
+class Broxy(threading.Thread):
     def __init__(self):
+        threading.Thread.__init__(self)
         self._pool = Pool()
         self._sever = Server(self._pool)
         self._sources = {}
-        self._thread = None
+        self._fetcher = None
+        self._running = False
 
     def source(self, override=False):
         def decorator(f):
             if override or not f.__name__ in self._sources.keys():
                 self._sources[f.__name__] = f
-                self._fetcher = self.fetch()
+                logging.info("Source {} registered!".format(f.__name__))
             else:
-                print("Source {} is already exist!".format(f.__name__))
+                logging.info("Source {} is already exist!".format(f.__name__))
             return f
         return decorator
 
-    def fetch(self):
+    def new_fetcher(self):
         for source in self._sources.values():
             for proxy in source():
                 yield proxy
 
-    def get(self, num=1):
-        l = len(self._pool)
-        return self._pool[: num if num < l else -1]
+    def fetch(self, n=1):
+        proxies = []
+        while len(proxies) < n:
+            try:
+                proxies.append(next(self._fetcher))
+            except (TypeError, StopIteration):
+                logging.info("Regenerate fetcher...")
+                self._fetcher = self.new_fetcher()
+        for proxy in proxies:
+            self._pool.append(proxy['ip'], proxy['port'], proxy['protocol'] if 'protocol' in proxy.keys() else None)
+        return proxies
+    
+    def __getitem__(self, key):
+        return self._pool[key]
+
+    def __len__(self):
+        return len(self._pool)
 
     def status(self):
         return "Pool   => total: {0}, usable: {1}\nSources=> total: {2}".format(
             len(self._pool), 0, len(self._sources)
         )
 
-    def verify(self, p):
-        return False
-
-    def start(self):
-        self._thread = threading.Thread(target=self.run)
-        self._thread.start()
-        self._app.run()
-
     def stop(self):
-        if not self._thread:
-            return
-        stop_thread(self._thread)
-        self._thread = None
-        self._app.stop()
-        print("Thread stopped")
+        self._running = False
 
     def __del__(self):
         self.stop()
@@ -154,48 +160,28 @@ class Broxy:
     def run(self):
         if len(self._sources) == 0:
             return
-        while len(self._pool) < 10:
-            self._pool.append(next(self._fetcher))
-            time.sleep(1)
+        self._running= True
+        while self._running:
+            while len(self._pool) < 3:
+                self.fetch(3)
+                time.sleep(3)
+            self._pool.clear()
+            time.sleep(9)
 
 
 def main():
+    logging.basicConfig(level=logging.INFO)
     print("Broxy!")
     broxy = Broxy()
 
     @broxy.source()
-    def test():
-        for i in range(1234, 65536):
-            yield {"ip": "1.2.3.4", "port": i, "protocol": "http"}
-
-    @broxy.source()
     def localhost():
-        yield {"ip": "localhost", "port": 1081}
         yield {"ip": "localhost", "port": 1080, "protocol": "socks5"}
+        yield {"ip": "localhost", "port": 1081}
         yield {"ip": "localhost", "port": 4780}
-        yield {"ip": "localhost", "port": 4781}
+        yield {"ip": "localhost", "port": 4781, "protocol": "socks5"}
 
-def test():
-    logging.basicConfig(level=logging.DEBUG)
-    # proxy = Proxy("localhost", 1081)
-    proxy = Proxy("192.168.48.1", 1081)
-    # print(proxy.status())
-    pool = Pool()
-    pool.append("192.168.48.1", 1081)
-    pool.append("192.168.48.1", 1080)
-    # print(pool.status())
-    # print(pool)
-    # pool.sort()
-    # pool.clear()
-    # print(pool)
-    
-    print(pool.proxies)
-    print(len(pool))
-    
-    # server = Server(pool)
-
-    # server.start()
+    broxy.run()
 
 if __name__ == "__main__":
-    # main()
-    test()
+    main()
