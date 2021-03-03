@@ -4,6 +4,8 @@ import requests
 import logging
 from flask import Flask
 
+from .source import use_all
+
 __VERSION__ = "0.0.1"
 
 class Proxy():
@@ -170,7 +172,7 @@ class Broxy(threading.Thread):
 
 
 def main():
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.DEBUG)
     print("Broxy!")
     broxy = Broxy()
 
@@ -181,7 +183,9 @@ def main():
         yield {"ip": "localhost", "port": 4780}
         yield {"ip": "localhost", "port": 4781, "protocol": "socks5"}
 
+    use_all(broxy)
     broxy.run()
 
 if __name__ == "__main__":
+    print("main")
     main()
