@@ -3,6 +3,7 @@ import time
 import requests
 import logging
 from flask import Flask
+from pathlib import Path
 
 from .source import use_all
 
@@ -44,12 +45,13 @@ class Proxy():
         return self.__str__() + "-> delay: {}, last_ping: {}".format(self.delay, self.last_ping)
 
 
-class Server:
-    def __init__(self, pool):
+class Server(threading.Thread):
+    def __init__(self, pool, debug=False):
+        threading.Thread.__init__(self)
         self._app = Flask("BorxyServer")
         self._pool = pool
         self._init_app(self._app)
-        self._thread = threading.Thread(target=self._app.run)
+        self.debug = debug
 
     def _init_app(self, app):
         @app.route("/")
@@ -57,8 +59,8 @@ class Server:
             proxies = self._pool.jsonify()
             return { "proxies" :proxies, "count": len(proxies) }
 
-    def start(self):
-        self._thread.start()
+    def run(self):
+        self._app.run(debug=self.debug)
 
 
 class Pool:
@@ -104,13 +106,18 @@ class Pool:
         logging.info("Drop {} unsuable proxies".format(pre - len(self)))
 
 class Broxy(threading.Thread):
-    def __init__(self):
+    def __init__(self, size=9, patch=9, wait=9, debug=False,server=True, cache="~/.broxy"):
+        logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
         threading.Thread.__init__(self)
         self._pool = Pool()
-        self._sever = Server(self._pool)
+        self._server = Server(self._pool) if server else None
         self._sources = {}
         self._fetcher = None
         self._running = False
+        self.size = size
+        self.patch=patch
+        self.wait=wait
+        self.cache=cache
 
     def source(self, override=False):
         def decorator(f):
@@ -137,7 +144,7 @@ class Broxy(threading.Thread):
             try:
                 proxies.append(next(self._fetcher))
             except (TypeError, StopIteration):
-                logging.info("Regenerate fetcher...")
+                logging.info("Generating fetcher...")
                 self._fetcher = self.new_fetcher()
         for proxy in proxies:
             proxy = Proxy(proxy['ip'], proxy['port'], proxy['protocol'] if 'protocol' in proxy.keys() else None)
@@ -153,9 +160,7 @@ class Broxy(threading.Thread):
         return len(self._pool)
 
     def status(self):
-        return "Pool   => total: {0}, usable: {1}\nSources=> total: {2}".format(
-            len(self._pool), 0, len(self._sources)
-        )
+        return self._pool.status()
 
     def stop(self):
         self._running = False
@@ -165,17 +170,20 @@ class Broxy(threading.Thread):
 
     def run(self):
         if len(self._sources) == 0:
+            logging.WARN("No regidtered source! exit...")
             return
+        if self._server:
+            self._server.start()
         self._running= True
         while self._running:
-            while len(self._pool) < 3:
-                self.fetch(3)
+            while len(self._pool) < self.size:
+                self.fetch(self.patch)
             self._pool.clear()
-            time.sleep(9)
+            logging.info(self.status())
+            time.sleep(self.wait)
 
 
 def main():
-    logging.basicConfig(level=logging.INFO)
     print("Broxy!")
     broxy = Broxy()
 
@@ -187,8 +195,7 @@ def main():
         yield {"ip": "localhost", "port": 4781, "protocol": "socks5"}
 
     use_all(broxy)
-    broxy.run()
+    broxy.start()
 
 if __name__ == "__main__":
-    print("main")
-    main()
+    p = Path("~/.broxy")
