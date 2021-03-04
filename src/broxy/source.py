@@ -7,7 +7,7 @@ def use_kuaidaili(broxy):
         base_url = "https://www.kuaidaili.com/free"
         for page in range(100):
             for section in ['inha', 'intr']:
-                url = "{}/{}/{}".format(base_url, section, page)
+                url = "{}/{}/{}".format(base_url, section, page + 1)
                 r = requests.get(url)
                 soup = BeautifulSoup(r.text, 'html.parser')
                 for table in soup.find_all("table"):

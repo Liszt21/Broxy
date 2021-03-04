@@ -15,7 +15,6 @@ class Proxy():
         self.protocol = protocol
         self.delay = float('inf')
         self.last_ping = None
-        self.ping()
 
     def ping(self):
         logging.debug("Ping {}://{}:{}".format(self.protocol, self.ip,self.port))
@@ -80,14 +79,12 @@ class Pool:
     def proxies(self):
         return self._proxies
 
-    def append(self, ip, port, protocol="http"):
-        if not protocol:
-            protocol = "http"
-        proxy = Proxy(ip, port, protocol)
+    def append(self, proxy):
         if str(proxy) not in [str(i) for i in self._proxies]:
             self._proxies.append(proxy)
         else:
             logging.info("Proxy : " + str(proxy) + " already exists")
+        return proxy.ping()
 
     def sort(self):
         self._proxies.sort(key=lambda a: a.delay)
@@ -143,7 +140,10 @@ class Broxy(threading.Thread):
                 logging.info("Regenerate fetcher...")
                 self._fetcher = self.new_fetcher()
         for proxy in proxies:
-            self._pool.append(proxy['ip'], proxy['port'], proxy['protocol'] if 'protocol' in proxy.keys() else None)
+            proxy = Proxy(proxy['ip'], proxy['port'], proxy['protocol'] if 'protocol' in proxy.keys() else None)
+            delay = self._pool.append(proxy)
+            if delay != float('inf'):
+                logging.info("Usable proxy: " + str(proxy))
         return proxies
     
     def __getitem__(self, key):
@@ -175,7 +175,7 @@ class Broxy(threading.Thread):
 
 
 def main():
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
     print("Broxy!")
     broxy = Broxy()
 
