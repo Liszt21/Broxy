@@ -59,6 +59,11 @@ class Server(threading.Thread):
             proxies = self._pool.jsonify()
             return { "proxies" :proxies, "count": len(proxies) }
 
+        @app.route("/usable")
+        def usable():
+            proxies = self._pool.jsonify(usable=True)
+            return { "proxies" :proxies, "count": len(proxies) }
+
     def run(self):
         self._app.run(debug=self.debug)
 
@@ -86,7 +91,7 @@ class Pool:
             self._proxies.append(proxy)
         else:
             logging.info("Proxy : " + str(proxy) + " already exists")
-        return proxy.ping()
+        return len(self._proxies)
 
     def sort(self):
         self._proxies.sort(key=lambda a: a.delay)
@@ -95,18 +100,18 @@ class Pool:
         unusable = [p for p in self._proxies if p.delay==-1]
         return "{} => Total: {} | Usable: {} | Unusable: {}".format(self.name, len(self._proxies), len(self._proxies) - len(unusable), len(unusable))
 
-    def jsonify(self, n=None):
+    def jsonify(self, n=None, usable=False):
         l = len(self._proxies)
         if not n or n > l: n = l
-        return [ {"ip":p.ip, "port":p.port, "protocol":p.protocol, "delay": p.delay, "last_ping": p.last_ping } for p in self._proxies[:n] ]
+        return [ {"ip":p.ip, "port":p.port, "protocol":p.protocol, "delay": p.delay, "last_ping": p.last_ping } for p in self._proxies[:n] if not usable or not p.delay == float('inf')]
 
     def clear(self):
-        pre = len(self)
-        self._proxies = [ p for p in self._proxies if p.delay != float('inf') ]
-        logging.info("Drop {} unsuable proxies".format(pre - len(self)))
+        l = len(self._proxies)
+        self._proxies = [ p for p in self._proxies if p.ping() != float('inf') ]
+        logging.info("Drop {} unsuable proxies, current {}".format(l - len(self._proxies), len(self._proxies)))
 
 class Broxy(threading.Thread):
-    def __init__(self, size=9, patch=9, wait=9, debug=False,server=True, cache="~/.broxy"):
+    def __init__(self, size=9, patch=9, debug=False,server=True, cache="~/.broxy"):
         logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
         threading.Thread.__init__(self)
         self._pool = Pool()
@@ -116,7 +121,7 @@ class Broxy(threading.Thread):
         self._running = False
         self.size = size
         self.patch=patch
-        self.wait=wait
+        self.wait=0
         self.cache=cache
 
     def source(self, override=False):
@@ -148,9 +153,11 @@ class Broxy(threading.Thread):
                 self._fetcher = self.new_fetcher()
         for proxy in proxies:
             proxy = Proxy(proxy['ip'], proxy['port'], proxy['protocol'] if 'protocol' in proxy.keys() else None)
-            delay = self._pool.append(proxy)
-            if delay != float('inf'):
+            if proxy.ping() != float('inf'):
+                self._pool.append(proxy)
                 logging.info("Usable proxy: " + str(proxy))
+            else:
+                logging.debug("Unusable proxy: " + str(proxy))
         return proxies
     
     def __getitem__(self, key):
@@ -176,16 +183,19 @@ class Broxy(threading.Thread):
             self._server.start()
         self._running= True
         while self._running:
-            while len(self._pool) < self.size:
+            count = len(self)
+            if len(self) < self.size:
                 self.fetch(self.patch)
-            self._pool.clear()
-            logging.info(self.status())
-            time.sleep(self.wait)
+                time.sleep(count)
+            else:
+                self._pool.clear()
+                logging.info(self.status())
+                time.sleep(count * 3)
 
 
 def main():
     print("Broxy!")
-    broxy = Broxy()
+    broxy = Broxy(debug=True)
 
     @broxy.source()
     def localhost():
