@@ -126,9 +126,13 @@ class Broxy(threading.Thread):
         return decorator
 
     def new_fetcher(self):
-        for source in self._sources.values():
-            for proxy in source():
-                yield proxy
+        fetchers = [ source() for source in self._sources.values() ]
+        while len(fetchers) > 0:
+            for fetcher in fetchers:
+                try:
+                    yield next(fetcher)
+                except StopIteration:
+                    fetchers.remove(fetcher)
 
     def fetch(self, n=1):
         proxies = []
@@ -166,7 +170,6 @@ class Broxy(threading.Thread):
         while self._running:
             while len(self._pool) < 3:
                 self.fetch(3)
-                time.sleep(3)
             self._pool.clear()
             time.sleep(9)
 
