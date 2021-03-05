@@ -19,6 +19,7 @@ class Proxy():
         self.protocol = protocol
         self.delay = float('inf')
         self.last_ping = None
+        self.create = time.ctime(time.time())
 
     def ping(self):
         logging.debug("Ping {}".format(str(self)))
@@ -38,7 +39,7 @@ class Proxy():
         except Exception:
             delay = float('inf')
 
-        self.last_ping = time.time()
+        self.last_ping = time.ctime(time.time())
         self.delay = delay
         return delay
 
@@ -114,7 +115,8 @@ class Pool:
                  "port": p.port,
                  "protocol": p.protocol,
                  "delay": p.delay,
-                 "last_ping": p.last_ping
+                 "last_ping": p.last_ping,
+                 "create": p.create
                  }
                 for p in self._proxies[:n]
                 if not usable or not p.delay == float('inf')]
@@ -218,6 +220,8 @@ def main():
 
     @broxy.source()
     def localhost():
+        yield {"ip": "172.22.192.1", "port": 1080, "protocol": "socks5"}
+        yield {"ip": "172.22.192.1", "port": 1081}
         yield {"ip": "localhost", "port": 1080, "protocol": "socks5"}
         yield {"ip": "localhost", "port": 1081}
         yield {"ip": "localhost", "port": 4780}
