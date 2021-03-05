@@ -9,29 +9,33 @@ from .source import use_all
 
 __VERSION__ = "0.0.1"
 
+
 class Proxy():
-    def __init__(self, ip, port, protocol= "http"):
+    def __init__(self, ip, port, protocol="http"):
         self.ip = ip
         self.port = port
+        if not protocol:
+            protocol = "http"
         self.protocol = protocol
         self.delay = float('inf')
         self.last_ping = None
 
     def ping(self):
-        logging.debug("Ping {}://{}:{}".format(self.protocol, self.ip,self.port))
+        logging.debug("Ping {}".format(str(self)))
         start = time.time()
         try:
             proxy = {
-            'http': '{}://{}:{}'.format(self.protocol, self.ip,self.port),
-            'https': '{}://{}:{}'.format(self.protocol, self.ip,self.port)
+                'http': '{}'.format(str(self)),
+                'https': '{}'.format(str(self))
             }
             '''head 信息'''
-            head = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36', 
+            head = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) \
+                                   AppleWebKit/537.36 (KHTML, like Gecko) \
+                                   Chrome/50.0.2661.102 Safari/537.36',
                     'Connection': 'keep-alive'}
-            p = requests.get('http://icanhazip.com', headers=head, proxies=proxy)
+            requests.get('http://icanhazip.com', headers=head, proxies=proxy)
             delay = time.time() - start
         except Exception:
-            logging.debug("Unusable proxy: {}".format(str(self)))
             delay = float('inf')
 
         self.last_ping = time.time()
@@ -39,10 +43,11 @@ class Proxy():
         return delay
 
     def __str__(self):
-        return '{}://{}:{}'.format(self.protocol, self.ip,self.port)
+        return '{}://{}:{}'.format(self.protocol, self.ip, self.port)
 
     def status(self):
-        return self.__str__() + "-> delay: {}, last_ping: {}".format(self.delay, self.last_ping)
+        return str(self) + "-> delay: {}, last_ping: {}".format(self.delay,
+                                                                self.last_ping)
 
 
 class Server(threading.Thread):
@@ -57,12 +62,12 @@ class Server(threading.Thread):
         @app.route("/")
         def index():
             proxies = self._pool.jsonify()
-            return { "proxies" :proxies, "count": len(proxies) }
+            return {"proxies": proxies, "count": len(proxies)}
 
         @app.route("/usable")
         def usable():
             proxies = self._pool.jsonify(usable=True)
-            return { "proxies" :proxies, "count": len(proxies) }
+            return {"proxies": proxies, "count": len(proxies)}
 
     def run(self):
         self._app.run(debug=self.debug)
@@ -70,11 +75,11 @@ class Server(threading.Thread):
 
 class Pool:
     def __init__(self, name="Proxy Pool"):
-        self.name=name
+        self.name = name
         self._proxies = []
 
     def __str__(self):
-        return ";".join([ str(p) for p in self._proxies ])
+        return ";".join([str(p) for p in self._proxies])
 
     def __getitem__(self, key):
         return self._proxies[key]
@@ -97,21 +102,33 @@ class Pool:
         self._proxies.sort(key=lambda a: a.delay)
 
     def status(self):
-        unusable = [p for p in self._proxies if p.delay==-1]
-        return "{} => Total: {} | Usable: {} | Unusable: {}".format(self.name, len(self._proxies), len(self._proxies) - len(unusable), len(unusable))
+        unusable = [p for p in self._proxies if p.delay == float('inf')]
+        return "{} => Total: {} | Usable: {} | Unusable: {}\
+                ".format(self.name, len(self._proxies),
+                         len(self._proxies) - len(unusable), len(unusable))
 
     def jsonify(self, n=None, usable=False):
-        l = len(self._proxies)
-        if not n or n > l: n = l
-        return [ {"ip":p.ip, "port":p.port, "protocol":p.protocol, "delay": p.delay, "last_ping": p.last_ping } for p in self._proxies[:n] if not usable or not p.delay == float('inf')]
+        if not n or n > len(self._proxies):
+            n = len(self._proxies)
+        return [{"ip": p.ip,
+                 "port": p.port,
+                 "protocol": p.protocol,
+                 "delay": p.delay,
+                 "last_ping": p.last_ping
+                 }
+                for p in self._proxies[:n]
+                if not usable or not p.delay == float('inf')]
 
     def clear(self):
-        l = len(self._proxies)
-        self._proxies = [ p for p in self._proxies if p.ping() != float('inf') ]
-        logging.info("Drop {} unsuable proxies, current {}".format(l - len(self._proxies), len(self._proxies)))
+        length = len(self._proxies)
+        self._proxies = [p for p in self._proxies if p.ping() != float('inf')]
+        logging.info("Drop {} unsuable proxies, current {}"
+                     .format(length - len(self._proxies), len(self._proxies)))
+
 
 class Broxy(threading.Thread):
-    def __init__(self, size=9, patch=9, debug=False,server=True, cache="~/.broxy"):
+    def __init__(self, size=9, patch=9, debug=False,
+                 server=True, cache="~/.broxy"):
         logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
         threading.Thread.__init__(self)
         self._pool = Pool()
@@ -120,13 +137,13 @@ class Broxy(threading.Thread):
         self._fetcher = None
         self._running = False
         self.size = size
-        self.patch=patch
-        self.wait=0
-        self.cache=cache
+        self.patch = patch
+        self.wait = 0
+        self.cache = cache
 
     def source(self, override=False):
         def decorator(f):
-            if override or not f.__name__ in self._sources.keys():
+            if override or f.__name__ not in self._sources.keys():
                 self._sources[f.__name__] = f
                 logging.info("Source {} registered!".format(f.__name__))
             else:
@@ -135,7 +152,7 @@ class Broxy(threading.Thread):
         return decorator
 
     def new_fetcher(self):
-        fetchers = [ source() for source in self._sources.values() ]
+        fetchers = [source() for source in self._sources.values()]
         while len(fetchers) > 0:
             for fetcher in fetchers:
                 try:
@@ -152,14 +169,16 @@ class Broxy(threading.Thread):
                 logging.info("Generating fetcher...")
                 self._fetcher = self.new_fetcher()
         for proxy in proxies:
-            proxy = Proxy(proxy['ip'], proxy['port'], proxy['protocol'] if 'protocol' in proxy.keys() else None)
+            proxy = Proxy(proxy['ip'], proxy['port'],
+                          proxy['protocol'] if 'protocol' in proxy.keys()
+                          else None)
             if proxy.ping() != float('inf'):
                 self._pool.append(proxy)
                 logging.info("Usable proxy: " + str(proxy))
             else:
                 logging.debug("Unusable proxy: " + str(proxy))
         return proxies
-    
+
     def __getitem__(self, key):
         return self._pool[key]
 
@@ -181,7 +200,7 @@ class Broxy(threading.Thread):
             return
         if self._server:
             self._server.start()
-        self._running= True
+        self._running = True
         while self._running:
             count = len(self)
             if len(self) < self.size:
@@ -206,6 +225,7 @@ def main():
 
     use_all(broxy)
     broxy.start()
+
 
 if __name__ == "__main__":
     p = Path("~/.broxy")
