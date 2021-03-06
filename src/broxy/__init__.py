@@ -52,12 +52,14 @@ class Proxy():
 
 
 class Server(threading.Thread):
-    def __init__(self, pool, debug=False):
+    def __init__(self, pool, host="localhost", port=5555, debug=False):
         threading.Thread.__init__(self)
         self._app = Flask("BorxyServer")
         self._pool = pool
         self._init_app(self._app)
         self.debug = debug
+        self.host = host
+        self.port = port
 
     def _init_app(self, app):
         @app.route("/")
@@ -71,7 +73,7 @@ class Server(threading.Thread):
             return {"proxies": proxies, "count": len(proxies)}
 
     def run(self):
-        self._app.run(debug=self.debug)
+        self._app.run(host=self.host, port=self.port, debug=self.debug)
 
 
 class Pool:
