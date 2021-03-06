@@ -198,7 +198,7 @@ class Broxy(threading.Thread):
 
     def run(self):
         if len(self._sources) == 0:
-            logging.WARN("No regidtered source! exit...")
+            logging.warn("No regidtered source! exit...")
             return
         if self._server:
             self._server.start()
